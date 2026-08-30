@@ -1,0 +1,58 @@
+name: Build B1 Remote IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  build-ipa:
+    runs-on: macos-26
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show build environment
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcodebuild -showsdks
+
+      - name: Extract B1 iPhone source
+        run: |
+          set -euo pipefail
+          rm -rf work
+          mkdir work
+          unzip -q B1_Remote_iPhone_CloudBuild_v0.2.zip -d work
+          test -d work/B1_Remote_iPhone_CloudBuild_v0.2/B1Remote.xcodeproj
+
+      - name: Build unsigned iPhone IPA
+        working-directory: work/B1_Remote_iPhone_CloudBuild_v0.2
+        run: |
+          set -euo pipefail
+          rm -rf build Payload B1_Remote_iPhone_v0.2_unsigned.ipa
+
+          xcodebuild             -project B1Remote.xcodeproj             -scheme B1Remote             -configuration Release             -sdk iphoneos             -destination 'generic/platform=iOS'             -derivedDataPath build             CODE_SIGNING_ALLOWED=NO             CODE_SIGNING_REQUIRED=NO             CODE_SIGN_IDENTITY=""             clean build
+
+          APP_PATH="$(find build/Build/Products/Release-iphoneos -maxdepth 1 -type d -name 'B1Remote.app' -print -quit)"
+          test -n "$APP_PATH"
+          test -d "$APP_PATH"
+
+          mkdir -p Payload
+          ditto "$APP_PATH" "Payload/B1Remote.app"
+          zip -qry B1_Remote_iPhone_v0.2_unsigned.ipa Payload
+          test -s B1_Remote_iPhone_v0.2_unsigned.ipa
+          ls -lh B1_Remote_iPhone_v0.2_unsigned.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: B1-Remote-iPhone-v0.2-IPA
+          path: work/B1_Remote_iPhone_CloudBuild_v0.2/B1_Remote_iPhone_v0.2_unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30

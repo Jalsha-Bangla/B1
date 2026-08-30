@@ -1,0 +1,5 @@
+work/
+build/
+Payload/
+*.ipa
+.DS_Store
