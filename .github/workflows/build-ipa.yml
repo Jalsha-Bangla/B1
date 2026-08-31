@@ -28,14 +28,14 @@ jobs:
           set -euo pipefail
           rm -rf work
           mkdir work
-          unzip -q B1_Remote_iPhone_CloudBuild_v0.2.zip -d work
-          test -d work/B1_Remote_iPhone_CloudBuild_v0.2/B1Remote.xcodeproj
+          unzip -q B1_Remote_iPhone_CloudBuild_v0.3.zip -d work
+          test -d work/B1_Remote_iPhone_CloudBuild_v0.3/B1Remote.xcodeproj
 
       - name: Build unsigned iPhone IPA
-        working-directory: work/B1_Remote_iPhone_CloudBuild_v0.2
+        working-directory: work/B1_Remote_iPhone_CloudBuild_v0.3
         run: |
           set -euo pipefail
-          rm -rf build Payload B1_Remote_iPhone_v0.2_unsigned.ipa
+          rm -rf build Payload B1_Remote_iPhone_v0.3_unsigned.ipa
 
           xcodebuild             -project B1Remote.xcodeproj             -scheme B1Remote             -configuration Release             -sdk iphoneos             -destination 'generic/platform=iOS'             -derivedDataPath build             CODE_SIGNING_ALLOWED=NO             CODE_SIGNING_REQUIRED=NO             CODE_SIGN_IDENTITY=""             clean build
 
@@ -43,16 +43,22 @@ jobs:
           test -n "$APP_PATH"
           test -d "$APP_PATH"
 
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist"
+          lipo -info "$APP_PATH/B1Remote"
+
           mkdir -p Payload
           ditto "$APP_PATH" "Payload/B1Remote.app"
-          zip -qry B1_Remote_iPhone_v0.2_unsigned.ipa Payload
-          test -s B1_Remote_iPhone_v0.2_unsigned.ipa
-          ls -lh B1_Remote_iPhone_v0.2_unsigned.ipa
+          zip -qry B1_Remote_iPhone_v0.3_unsigned.ipa Payload
+          test -s B1_Remote_iPhone_v0.3_unsigned.ipa
+          shasum -a 256 B1_Remote_iPhone_v0.3_unsigned.ipa
+          ls -lh B1_Remote_iPhone_v0.3_unsigned.ipa
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: B1-Remote-iPhone-v0.2-IPA
-          path: work/B1_Remote_iPhone_CloudBuild_v0.2/B1_Remote_iPhone_v0.2_unsigned.ipa
+          name: B1-Remote-iPhone-v0.3-IPA
+          path: work/B1_Remote_iPhone_CloudBuild_v0.3/B1_Remote_iPhone_v0.3_unsigned.ipa
           if-no-files-found: error
           retention-days: 30
