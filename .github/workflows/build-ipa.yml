@@ -23,16 +23,31 @@ jobs:
           xcodebuild -version
           xcodebuild -showsdks
 
-      - name: Extract B1 iPhone source
+      - name: Prepare B1 iPhone v0.3 source
         run: |
           set -euo pipefail
           rm -rf work
           mkdir work
-          unzip -q B1_Remote_iPhone_CloudBuild_v0.3.zip -d work
-          test -d work/B1_Remote_iPhone_CloudBuild_v0.3/B1Remote.xcodeproj
+          unzip -q B1_Remote_iPhone_CloudBuild_v0.2.zip -d work
+
+          SRC="work/B1_Remote_iPhone_CloudBuild_v0.2"
+          test -d "$SRC/B1Remote.xcodeproj"
+
+          cp ios/v0.3/BluetoothRemoteManager.swift "$SRC/B1Remote/BluetoothRemoteManager.swift"
+          cp ios/v0.3/B1RemoteApp.swift "$SRC/B1Remote/B1RemoteApp.swift"
+          cp ios/v0.3/Info.plist "$SRC/B1Remote/Info.plist"
+
+          python3 - <<'PY'
+from pathlib import Path
+p = Path("work/B1_Remote_iPhone_CloudBuild_v0.2/B1Remote.xcodeproj/project.pbxproj")
+s = p.read_text()
+s = s.replace("CURRENT_PROJECT_VERSION = 2;", "CURRENT_PROJECT_VERSION = 3;")
+s = s.replace("MARKETING_VERSION = 0.2.0;", "MARKETING_VERSION = 0.3.0;")
+p.write_text(s)
+PY
 
       - name: Build unsigned iPhone IPA
-        working-directory: work/B1_Remote_iPhone_CloudBuild_v0.3
+        working-directory: work/B1_Remote_iPhone_CloudBuild_v0.2
         run: |
           set -euo pipefail
           rm -rf build Payload B1_Remote_iPhone_v0.3_unsigned.ipa
@@ -43,9 +58,9 @@ jobs:
           test -n "$APP_PATH"
           test -d "$APP_PATH"
 
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist"
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist"
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist"
+          echo "Bundle ID: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")"
+          echo "Version: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist")"
+          echo "Build: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist")"
           lipo -info "$APP_PATH/B1Remote"
 
           mkdir -p Payload
@@ -59,6 +74,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: B1-Remote-iPhone-v0.3-IPA
-          path: work/B1_Remote_iPhone_CloudBuild_v0.3/B1_Remote_iPhone_v0.3_unsigned.ipa
+          path: work/B1_Remote_iPhone_CloudBuild_v0.2/B1_Remote_iPhone_v0.3_unsigned.ipa
           if-no-files-found: error
           retention-days: 30
