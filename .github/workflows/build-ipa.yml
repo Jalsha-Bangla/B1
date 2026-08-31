@@ -37,14 +37,9 @@ jobs:
           cp ios/v0.3/B1RemoteApp.swift "$SRC/B1Remote/B1RemoteApp.swift"
           cp ios/v0.3/Info.plist "$SRC/B1Remote/Info.plist"
 
-          python3 - <<'PY'
-from pathlib import Path
-p = Path("work/B1_Remote_iPhone_CloudBuild_v0.2/B1Remote.xcodeproj/project.pbxproj")
-s = p.read_text()
-s = s.replace("CURRENT_PROJECT_VERSION = 2;", "CURRENT_PROJECT_VERSION = 3;")
-s = s.replace("MARKETING_VERSION = 0.2.0;", "MARKETING_VERSION = 0.3.0;")
-p.write_text(s)
-PY
+          PBX="$SRC/B1Remote.xcodeproj/project.pbxproj"
+          perl -0pi -e 's/CURRENT_PROJECT_VERSION = 2;/CURRENT_PROJECT_VERSION = 3;/g' "$PBX"
+          perl -0pi -e 's/MARKETING_VERSION = 0\.2\.0;/MARKETING_VERSION = 0.3.0;/g' "$PBX"
 
       - name: Build unsigned iPhone IPA
         working-directory: work/B1_Remote_iPhone_CloudBuild_v0.2
@@ -52,7 +47,7 @@ PY
           set -euo pipefail
           rm -rf build Payload B1_Remote_iPhone_v0.3_unsigned.ipa
 
-          xcodebuild             -project B1Remote.xcodeproj             -scheme B1Remote             -configuration Release             -sdk iphoneos             -destination 'generic/platform=iOS'             -derivedDataPath build             CODE_SIGNING_ALLOWED=NO             CODE_SIGNING_REQUIRED=NO             CODE_SIGN_IDENTITY=""             clean build
+          xcodebuild -project B1Remote.xcodeproj -scheme B1Remote -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" clean build
 
           APP_PATH="$(find build/Build/Products/Release-iphoneos -maxdepth 1 -type d -name 'B1Remote.app' -print -quit)"
           test -n "$APP_PATH"
