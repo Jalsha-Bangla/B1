@@ -3,7 +3,9 @@ name: Build B1 Remote IPA
 on:
   workflow_dispatch:
   push:
-    branches: [ "main" ]
+    branches:
+      - "main"
+      - "feature/iphone-maintenance-bridge-v1"
 
 permissions:
   contents: read
@@ -23,7 +25,7 @@ jobs:
           xcodebuild -version
           xcodebuild -showsdks
 
-      - name: Prepare B1 iPhone v0.3 source
+      - name: Prepare B1 iPhone v0.4 source
         run: |
           set -euo pipefail
           rm -rf work
@@ -35,19 +37,30 @@ jobs:
 
           cp ios/v0.3/BluetoothRemoteManager.swift "$SRC/B1Remote/BluetoothRemoteManager.swift"
           cp ios/v0.3/B1RemoteApp.swift "$SRC/B1Remote/B1RemoteApp.swift"
-          cp ios/v0.3/Info.plist "$SRC/B1Remote/Info.plist"
+          cp ios/v0.4/ContentView.swift "$SRC/B1Remote/ContentView.swift"
+          cp ios/v0.4/Info.plist "$SRC/B1Remote/Info.plist"
 
           PBX="$SRC/B1Remote.xcodeproj/project.pbxproj"
-          perl -0pi -e 's/CURRENT_PROJECT_VERSION = 2;/CURRENT_PROJECT_VERSION = 3;/g' "$PBX"
-          perl -0pi -e 's/MARKETING_VERSION = 0\.2\.0;/MARKETING_VERSION = 0.3.0;/g' "$PBX"
+          perl -0pi -e 's/CURRENT_PROJECT_VERSION = 2;/CURRENT_PROJECT_VERSION = 4;/g' "$PBX"
+          perl -0pi -e 's/MARKETING_VERSION = 0\.2\.0;/MARKETING_VERSION = 0.4.0;/g' "$PBX"
 
       - name: Build unsigned iPhone IPA
         working-directory: work/B1_Remote_iPhone_CloudBuild_v0.2
         run: |
           set -euo pipefail
-          rm -rf build Payload B1_Remote_iPhone_v0.3_unsigned.ipa
+          rm -rf build Payload B1_Remote_iPhone_v0.4_unsigned.ipa
 
-          xcodebuild -project B1Remote.xcodeproj -scheme B1Remote -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" clean build
+          xcodebuild \
+            -project B1Remote.xcodeproj \
+            -scheme B1Remote \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            clean build
 
           APP_PATH="$(find build/Build/Products/Release-iphoneos -maxdepth 1 -type d -name 'B1Remote.app' -print -quit)"
           test -n "$APP_PATH"
@@ -60,15 +73,15 @@ jobs:
 
           mkdir -p Payload
           ditto "$APP_PATH" "Payload/B1Remote.app"
-          zip -qry B1_Remote_iPhone_v0.3_unsigned.ipa Payload
-          test -s B1_Remote_iPhone_v0.3_unsigned.ipa
-          shasum -a 256 B1_Remote_iPhone_v0.3_unsigned.ipa
-          ls -lh B1_Remote_iPhone_v0.3_unsigned.ipa
+          zip -qry B1_Remote_iPhone_v0.4_unsigned.ipa Payload
+          test -s B1_Remote_iPhone_v0.4_unsigned.ipa
+          shasum -a 256 B1_Remote_iPhone_v0.4_unsigned.ipa
+          ls -lh B1_Remote_iPhone_v0.4_unsigned.ipa
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: B1-Remote-iPhone-v0.3-IPA
-          path: work/B1_Remote_iPhone_CloudBuild_v0.2/B1_Remote_iPhone_v0.3_unsigned.ipa
+          name: B1-Remote-iPhone-v0.4-Maintenance-Bridge
+          path: work/B1_Remote_iPhone_CloudBuild_v0.2/B1_Remote_iPhone_v0.4_unsigned.ipa
           if-no-files-found: error
           retention-days: 30
