@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-import argparse, hashlib, json, os, re, sqlite3, subprocess, tempfile
+import argparse, hashlib, json, os, re, shlex, sqlite3, subprocess, tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-VERSION = "0.1.1"
+VERSION = "0.1.2"
 SERVICE = Path(__file__).resolve().parent
 CONFIG_PATH = SERVICE / "config.json"
 
@@ -90,7 +90,7 @@ class Bridge:
         command = (
             "adb start-server >/dev/null 2>&1; "
             f"adb connect {self.serial} >/tmp/connect.txt 2>&1 || true; "
-            f"adb -s {self.serial} shell {shell_cmd}"
+            f"adb -s {self.serial} shell {shlex.quote(shell_cmd)}"
         )
         rc, out = self.docker(command, timeout=timeout)
         low = out.lower()
