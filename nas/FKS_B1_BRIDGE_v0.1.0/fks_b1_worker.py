@@ -111,7 +111,7 @@ class Bridge:
         low = out.lower()
         if "unauthorized" in low:
             state = "AUTH_PENDING"
-        elif self.serial not in out or "\tdevice" not in out:
+        elif not re.search(r"(?m)^" + re.escape(self.serial) + r"\s+device(?:\s|$)", out):
             state = "OFFLINE"
         return state, out
 
