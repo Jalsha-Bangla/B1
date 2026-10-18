@@ -3,7 +3,7 @@ import argparse, hashlib, json, os, re, sqlite3, subprocess, tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 SERVICE = Path(__file__).resolve().parent
 CONFIG_PATH = SERVICE / "config.json"
 
