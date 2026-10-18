@@ -1,0 +1,41 @@
+name: Build FKS B1 NAS Bridge
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "feature/nas-b1-bridge-v0.1"
+    paths:
+      - "nas/FKS_B1_BRIDGE_v0.1.0/**"
+      - ".github/workflows/build-nas-b1-bridge.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Static checks
+        run: |
+          set -euo pipefail
+          python3 -m py_compile nas/FKS_B1_BRIDGE_v0.1.0/fks_b1_worker.py
+          bash -n nas/FKS_B1_BRIDGE_v0.1.0/install.sh
+      - name: Package
+        run: |
+          set -euo pipefail
+          rm -rf dist staging
+          mkdir -p dist staging/FKS_B1_BRIDGE_v0.1.0
+          cp nas/FKS_B1_BRIDGE_v0.1.0/* staging/FKS_B1_BRIDGE_v0.1.0/
+          chmod +x staging/FKS_B1_BRIDGE_v0.1.0/install.sh staging/FKS_B1_BRIDGE_v0.1.0/fks_b1_worker.py
+          (cd staging && zip -qr ../dist/FKS_B1_BRIDGE_v0.1.0.zip FKS_B1_BRIDGE_v0.1.0)
+          sha256sum dist/FKS_B1_BRIDGE_v0.1.0.zip | tee dist/FKS_B1_BRIDGE_v0.1.0.zip.sha256.txt
+      - name: Upload bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: FKS-B1-BRIDGE-v0.1.0
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
