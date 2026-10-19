@@ -48,40 +48,70 @@ final class HidTransport {
     private BluetoothDevice preferred;
     private boolean registered;
     private boolean connected;
+    private boolean foreground;
+    private boolean proxyPending;
+    private boolean registrationPending;
+    private int foregroundRetries;
 
     HidTransport(Context context, Listener listener) { this.context = context; this.listener = listener; }
 
     void start() {
+        if (proxyPending || registrationPending || registered) return;
+        if (hid != null) { register(); return; }
         try {
             BluetoothManager bm = (BluetoothManager) context.getSystemService(Context.BLUETOOTH_SERVICE);
             adapter = bm == null ? null : bm.getAdapter();
             if (adapter == null) { state("NO_BLUETOOTH_ADAPTER"); return; }
             if (!adapter.isEnabled()) { state("BLUETOOTH_OFF"); return; }
             state("REQUESTING_HID_DEVICE_PROFILE");
+            proxyPending = true;
             if (!adapter.getProfileProxy(context, new BluetoothProfile.ServiceListener() {
                 @Override public void onServiceConnected(int profile, BluetoothProfile proxy) {
+                    proxyPending = false;
                     if (!(proxy instanceof BluetoothHidDevice)) { state("HID_PROXY_UNAVAILABLE"); return; }
                     hid = (BluetoothHidDevice) proxy;
                     register();
                 }
                 @Override public void onServiceDisconnected(int profile) {
+                    proxyPending = false;
+                    registrationPending = false;
                     connected = false; registered = false; host = null; hid = null; state("HID_PROFILE_DISCONNECTED");
                 }
-            }, BluetoothProfile.HID_DEVICE)) state("HID_DEVICE_UNSUPPORTED_ON_PHONE");
-        } catch (SecurityException e) { state("BLUETOOTH_PERMISSION_DENIED"); }
-        catch (Exception e) { state("HID_PROFILE_ERROR:"+e.getClass().getSimpleName()); }
+            }, BluetoothProfile.HID_DEVICE)) {
+                proxyPending = false;
+                state("HID_DEVICE_UNSUPPORTED_ON_PHONE");
+            }
+        } catch (SecurityException e) { proxyPending = false; state("BLUETOOTH_PERMISSION_DENIED"); }
+        catch (Exception e) { proxyPending = false; state("HID_PROFILE_ERROR:"+e.getClass().getSimpleName()); }
     }
 
     private void register() {
-        if (hid == null) return;
+        if (hid == null || registered || registrationPending) return;
+        registrationPending = true;
         try {
             BluetoothHidDeviceAppSdpSettings sdp = new BluetoothHidDeviceAppSdpSettings(
                 "B1 Precision Remote", "Keyboard and relative mouse HID test", "FKS",
                 BluetoothHidDevice.SUBCLASS1_COMBO, DESCRIPTOR);
             boolean accepted = hid.registerApp(sdp, null, null, context.getMainExecutor(), new BluetoothHidDevice.Callback() {
                 @Override public void onAppStatusChanged(BluetoothDevice pluggedDevice, boolean isRegistered) {
+                    registrationPending = false;
                     registered = isRegistered;
-                    state(isRegistered ? "HID_REGISTERED_PAIR_WITH_B1" : "HID_REGISTRATION_FAILED_OR_RELEASED");
+                    if (isRegistered) {
+                        foregroundRetries = 0;
+                        state("HID_REGISTERED_PAIR_WITH_B1");
+                    } else {
+                        connected = false;
+                        host = null;
+                        state(foreground ? "HID_UNREGISTERED_RETRYING" : "HID_RELEASED_IN_BACKGROUND");
+                        // Android unregisters HID Device apps that leave foreground.
+                        // Retry only after returning to the foreground, with a strict cap.
+                        if (foreground && foregroundRetries < 2) {
+                            foregroundRetries++;
+                            handler.postDelayed(() -> {
+                                if (foreground && !registered && !registrationPending) register();
+                            }, 650);
+                        }
+                    }
                 }
                 @Override public void onConnectionStateChanged(BluetoothDevice device, int newState) {
                     connected = newState == BluetoothProfile.STATE_CONNECTED;
@@ -89,8 +119,27 @@ final class HidTransport {
                     else { host = null; state("HID_CONNECTION_STATE_" + newState); }
                 }
             });
-            if (!accepted) state("HID_REGISTER_REQUEST_REJECTED");
-        } catch (Exception e) { state("HID_REGISTER_EXCEPTION:"+e.getClass().getSimpleName()); }
+            if (!accepted) {
+                registrationPending = false;
+                state("HID_REGISTER_REQUEST_REJECTED");
+            }
+        } catch (Exception e) {
+            registrationPending = false;
+            state("HID_REGISTER_EXCEPTION:"+e.getClass().getSimpleName());
+        }
+    }
+
+    /** Re-register after the system's Bluetooth discoverability UI returns. */
+    void onForeground() {
+        foreground = true;
+        foregroundRetries = 0;
+        if (!registered && !registrationPending) start();
+    }
+    void onBackground() { foreground = false; }
+    void retryRegistration() {
+        if (registered) { reconnect(); return; }
+        foregroundRetries = 0;
+        start();
     }
 
     Set<BluetoothDevice> bondedDevices() { return adapter == null ? java.util.Collections.emptySet() : adapter.getBondedDevices(); }
@@ -134,6 +183,7 @@ final class HidTransport {
         catch (Exception ignored) {}
         if(adapter != null && hid != null) adapter.closeProfileProxy(BluetoothProfile.HID_DEVICE,hid);
         hid = null; host = null; connected = false; registered = false;
+        proxyPending = false; registrationPending = false; foreground = false;
     }
     private void state(String s) { handler.post(() -> listener.onState(s, isConnected())); }
 }
