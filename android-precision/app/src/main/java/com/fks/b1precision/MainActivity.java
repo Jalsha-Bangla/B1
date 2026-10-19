@@ -75,7 +75,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
         header.addView(title,new LinearLayout.LayoutParams(0,dp(50),1));
         btButton=txt("●",21);btButton.setTextColor(ORANGE);
         btButton.setBackground(bg(SURFACE,40));
-        btButton.setOnClickListener(v->{vibrate(v);if(hid.isRegistered())hid.reconnect();else hid.start();});
+        btButton.setOnClickListener(v->{vibrate(v);hid.retryRegistration();});
         header.addView(btButton,lp(45,45));
         TextView power=txt("⏻",25);power.setBackground(bg(SURFACE,40));
         LinearLayout.LayoutParams powerLp=lp(45,45);powerLp.leftMargin=dp(8);header.addView(power,powerLp);
@@ -168,8 +168,18 @@ public final class MainActivity extends Activity implements SensorEventListener 
         hid.mouse(dx,dy,false);
     }
     @Override public void onAccuracyChanged(Sensor sensor,int accuracy){}
-    @Override protected void onResume(){super.onResume();active=true;updateGyro();}
-    @Override protected void onPause(){active=false;updateGyro();super.onPause();}
+    @Override protected void onResume(){
+        super.onResume();
+        active=true;
+        if (hid != null) hid.onForeground();
+        updateGyro();
+    }
+    @Override protected void onPause(){
+        active=false;
+        updateGyro();
+        if (hid != null) hid.onBackground();
+        super.onPause();
+    }
     @Override protected void onDestroy(){if(hid!=null)hid.release();super.onDestroy();}
     @Override public boolean onKeyDown(int keyCode,KeyEvent e){
         if(hid!=null && hid.isConnected()){
