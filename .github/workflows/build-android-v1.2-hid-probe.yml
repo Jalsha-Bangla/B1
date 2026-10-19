@@ -1,0 +1,36 @@
+name: Build B1 Android v1.2 HID Probe
+on:
+  push:
+    branches:
+      - feature/android-v1.2-precision-hid
+    paths:
+      - 'android-precision/**'
+      - 'tools/b1_*probe.py'
+      - 'tools/b1_retarget_verify.py'
+      - '.github/workflows/build-android-v1.2-hid-probe.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate read-only and guarded NAS tools
+        run: python3 -m py_compile tools/b1_hid_host_probe.py tools/b1_retarget_verify.py
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Build isolated test APK
+        working-directory: android-precision
+        run: gradle --no-daemon :app:assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B1-Precision-HID-Probe-v1.2.0
+          path: android-precision/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

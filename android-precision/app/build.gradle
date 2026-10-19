@@ -1,0 +1,17 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.fks.b1precision'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'com.fks.b1remote.precision.probe'
+        minSdk 28
+        targetSdk 34
+        versionCode 1201
+        versionName '1.2.1-uat.1'
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
