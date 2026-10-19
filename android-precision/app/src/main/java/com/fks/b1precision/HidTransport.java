@@ -61,7 +61,8 @@ final class HidTransport {
     private static final int MAX_RECONNECT_ATTEMPTS = 3;
     private static final String PREF_NAME = "b1_precision_hid";
     private static final String PREF_B1_ADDR = "verified_b1_host_address";
-    private final Runnable reconnectTask = () -> {
+    private final Runnable reconnectTask = new Runnable() {
+        @Override public void run() {
         if (!foreground || !registered || isConnected()) return;
         if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
             state("HID_RECONNECT_PAUSED_TAP_ORANGE");
@@ -80,7 +81,8 @@ final class HidTransport {
             state("HID_RECONNECT_ERROR_" + e.getClass().getSimpleName());
         }
         if (!isConnected() && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-            handler.postDelayed(reconnectTask, 1900);
+            handler.postDelayed(this, 1900);
+        }
         }
     };
 
