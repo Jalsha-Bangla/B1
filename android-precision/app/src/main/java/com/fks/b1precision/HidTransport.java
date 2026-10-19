@@ -88,15 +88,16 @@ final class HidTransport {
 
     private BluetoothDevice rememberedB1() {
         if (adapter == null) return null;
-        if (preferred != null && "B1".equalsIgnoreCase(safeName(preferred))
-                && preferred.getBondState() == BluetoothDevice.BOND_BONDED) return preferred;
+        if (preferred != null && preferred.getBondState() == BluetoothDevice.BOND_BONDED)
+            return preferred;
         String address = context.getSharedPreferences(PREF_NAME,Context.MODE_PRIVATE)
                 .getString(PREF_B1_ADDR, null);
         if (address == null) return null;
         try {
             BluetoothDevice device = adapter.getRemoteDevice(address);
-            if (!"B1".equalsIgnoreCase(safeName(device))
-                    || device.getBondState() != BluetoothDevice.BOND_BONDED) return null;
+            // Address was saved only after a genuine HID connection to B1.
+            // Bluetooth names can temporarily be null after screen unlock.
+            if (device.getBondState() != BluetoothDevice.BOND_BONDED) return null;
             preferred = device;
             return device;
         } catch (RuntimeException ignored) { return null; }
