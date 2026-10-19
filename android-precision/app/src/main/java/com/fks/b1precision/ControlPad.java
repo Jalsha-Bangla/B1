@@ -6,7 +6,6 @@ import android.graphics.Paint;
 import android.graphics.RectF;
 import android.os.Handler;
 import android.os.Looper;
-import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
 
@@ -17,6 +16,7 @@ final class ControlPad extends View {
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Listener listener;
+    private final Haptics haptics;
     private int mode = DPAD, pressed = 0, repeatingUsage = 0;
     private float downX,downY, ballX,ballY,drawBallX,drawBallY;
     private boolean dragging, didSwipe;
@@ -28,12 +28,17 @@ final class ControlPad extends View {
             handler.postDelayed(this,250);  // EXACT 4 events/sec while held
         }
     };
-    ControlPad(Context context,Listener listener) { super(context); this.listener = listener; setHapticFeedbackEnabled(true); }
+    ControlPad(Context context,Listener listener) {
+        super(context);
+        this.listener = listener;
+        haptics = new Haptics(context);
+        setHapticFeedbackEnabled(true);
+    }
     int getMode(){return mode;}
     void setMode(int m){mode=m;stopRepeat();dragging=false;invalidate();}
     void stopRepeat(){repeatingUsage=0;handler.removeCallbacks(repeating);}
-    void hitDirection(int usage){performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);listener.onDirection(usage);}
-    void hitOk(){performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);listener.onOk();}
+    void hitDirection(int usage){haptics.tick(this);listener.onDirection(usage);}
+    void hitOk(){haptics.tick(this);listener.onOk();}
     private int direction(float dx,float dy){return Math.abs(dx)>Math.abs(dy) ? (dx<0?0x50:0x4f) : (dy<0?0x52:0x51);}
     private float dp(float v){return v*getResources().getDisplayMetrics().density;}
     @Override protected void onDraw(Canvas c){
@@ -85,7 +90,7 @@ final class ControlPad extends View {
                     if(r<max*.43f)hitOk();else if(r<max)hitDirection(direction(dx,dy));
                 } else if(mode==GYRO){
                     long now=System.currentTimeMillis();
-                    if(now-lastTap<250){handler.removeCallbacksAndMessages(null);performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);listener.onBack();lastTap=0;}
+                    if(now-lastTap<250){handler.removeCallbacksAndMessages(null);haptics.tick(this);listener.onBack();lastTap=0;}
                     else {lastTap=now;handler.postDelayed(()->{if(lastTap==now)hitOk();},260);}
                 } else if(mode==SWIPE && !didSwipe)hitOk();
                 stopRepeat();dragging=false;ballX=ballY=0;invalidate();return true;
