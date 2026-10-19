@@ -43,13 +43,30 @@ public final class MainActivity extends Activity implements SensorEventListener 
     private TextView btButton, stateText, title;
     private long lastGyroNs;
     private boolean active;
+    private Haptics haptics;
+    private boolean gyroTapMouse;
+    private float gyroSensitivity, filteredDx, filteredDy;
 
     private int dp(float x){return (int)(getResources().getDisplayMetrics().density*x+.5f);}
     private GradientDrawable bg(int color,int r){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(r));return d;}
     private TextView txt(String s,int sp){ TextView t=new TextView(this);t.setText(s);t.setTextSize(sp);t.setGravity(Gravity.CENTER);t.setTextColor(TEXT);t.setIncludeFontPadding(false);return t; }
     private LinearLayout.LayoutParams lp(int w,int h){return new LinearLayout.LayoutParams(w<0?w:dp(w),h<0?h:dp(h));}
     private void toast(String s){Toast.makeText(this,s,Toast.LENGTH_SHORT).show();}
-    private void vibrate(View v){v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);}
+    private void vibrate(View v){haptics.tick(v);}
+    private void chooseGyroSensitivity(){
+        final String[] labels={"Precise (0.85x)","Normal (1.3x)","Fast (1.8x)","Very fast (2.5x)"};
+        final float[] values={0.85f,1.3f,1.8f,2.5f};
+        new AlertDialog.Builder(this).setTitle("Gyro sensitivity")
+            .setSingleChoiceItems(labels, gyroSensitivity<1.1f?0:gyroSensitivity<1.55f?1:gyroSensitivity<2.15f?2:3,
+                (dialog,index)->{
+                    gyroSensitivity=values[index];
+                    getPreferences(MODE_PRIVATE).edit().putFloat("gyro_sensitivity",gyroSensitivity).apply();
+                    filteredDx=filteredDy=0;
+                    vibrate(pad);
+                    dialog.dismiss();
+                })
+            .setNegativeButton("Cancel",null).show();
+    }
 
     @Override public void onCreate(Bundle state){
         super.onCreate(state);
@@ -58,6 +75,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
         getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         sensors=(SensorManager)getSystemService(SENSOR_SERVICE);
         gyro=sensors.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
+        gyroTapMouse=getPreferences(MODE_PRIVATE).getBoolean("gyro_mouse_click",true);
+        gyroSensitivity=getPreferences(MODE_PRIVATE).getFloat("gyro_sensitivity",1.8f);
+        haptics=new Haptics(this);
         buildUi();
         hid=new HidTransport(this,(message,connected)->{
             if(btButton!=null){btButton.setTextColor(connected?GREEN:ORANGE);btButton.setText(connected?"●":"●");}
@@ -90,9 +110,15 @@ public final class MainActivity extends Activity implements SensorEventListener 
            popup.getMenu().add(0,ControlPad.GYRO,2,"Gyro");
            popup.getMenu().add(1,100,3,"Pair / choose HID host");
            popup.getMenu().add(1,101,4,"Enable Bluetooth discoverability");
+           popup.getMenu().add(2,102,5,gyroTapMouse?"Gyro tap: Mouse (switch to Enter)":"Gyro tap: Enter (switch to Mouse)");
+           popup.getMenu().add(2,103,6,"Gyro sensitivity");
            popup.setOnMenuItemClickListener(item->{int id=item.getItemId();if(id<=2){pad.setMode(id);updateGyro();return true;}
               if(id==100){chooseHost();return true;}
               if(id==101){requestDiscoverable();return true;}
+              if(id==102){gyroTapMouse=!gyroTapMouse;
+                  getPreferences(MODE_PRIVATE).edit().putBoolean("gyro_mouse_click",gyroTapMouse).apply();
+                  toast(gyroTapMouse?"Gyro click: Mouse":"Gyro click: Enter");return true;}
+              if(id==103){chooseGyroSensitivity();return true;}
               return false;});popup.show();});
         root.addView(header,lp(-1,52));
 
@@ -100,13 +126,16 @@ public final class MainActivity extends Activity implements SensorEventListener 
         root.addView(stateText,lp(-1,32));
         pad=new ControlPad(this,new ControlPad.Listener(){
             public void onDirection(int usage){hid.key(usage);}
-            public void onOk(){hid.key(0x28);}
-            public void onBack(){hid.key(0x29);}
+            public void onOk(){
+                if(pad!=null && pad.getMode()==ControlPad.GYRO && gyroTapMouse) hid.mouseClick();
+                else hid.key(0x28);
+            }
+            public void onBack(){hid.back();}
         });
         LinearLayout.LayoutParams padLp=new LinearLayout.LayoutParams(-1,0,1);padLp.topMargin=dp(8);padLp.bottomMargin=dp(10);
         root.addView(pad,padLp);
         LinearLayout nav=new LinearLayout(this);nav.setGravity(Gravity.CENTER);nav.setOrientation(LinearLayout.HORIZONTAL);
-        navButton(nav,"‹",()->hid.key(0x29));
+        navButton(nav,"‹",()->hid.back());
         navButton(nav,"⌂",()->hid.consumer(0x223));  // AC Home; verify Android mapping during UAT
         navButton(nav,"✦",()->toast("Assistant HID mapping pending"));
         root.addView(nav,lp(-1,64));
@@ -152,7 +181,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     }
     private void updateGyro(){
         if(sensors==null)return;
-        sensors.unregisterListener(this);lastGyroNs=0;
+        sensors.unregisterListener(this);lastGyroNs=0;filteredDx=filteredDy=0;
         if(active && pad!=null && pad.getMode()==ControlPad.GYRO && gyro!=null){
             sensors.registerListener(this,gyro,SensorManager.SENSOR_DELAY_GAME);
         }
@@ -162,9 +191,15 @@ public final class MainActivity extends Activity implements SensorEventListener 
         if(pad==null || pad.getMode()!=ControlPad.GYRO || !hid.isConnected())return;
         if(lastGyroNs!=0 && event.timestamp-lastGyroNs<25_000_000)return; // 40Hz max
         lastGyroNs=event.timestamp;
-        // Relative angular velocity to HID mouse. Final sensitivity/sign need on-device UAT.
-        int dx=Math.round(-event.values[1]*13f),dy=Math.round(-event.values[0]*13f);
-        if(Math.abs(dx)<1&&Math.abs(dy)<1)return;
+        // A relative HID mouse needs higher, adjustable gain on B1's TV.
+        // Low-pass filtering reduces gyro jitter without losing responsiveness.
+        float rawDx=-event.values[1]*13f*gyroSensitivity;
+        float rawDy=-event.values[0]*13f*gyroSensitivity;
+        filteredDx=filteredDx*0.32f+rawDx*0.68f;
+        filteredDy=filteredDy*0.32f+rawDy*0.68f;
+        int dx=Math.max(-127,Math.min(127,Math.round(filteredDx)));
+        int dy=Math.max(-127,Math.min(127,Math.round(filteredDy)));
+        if(dx==0 && dy==0)return;
         hid.mouse(dx,dy,false);
     }
     @Override public void onAccuracyChanged(Sensor sensor,int accuracy){}
