@@ -1,7 +1,6 @@
 package com.fks.b1precision;
 
 import android.content.Context;
-import android.os.Build;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.view.HapticFeedbackConstants;
@@ -23,7 +22,7 @@ final class Haptics {
                 vibrator.vibrate(VibrationEffect.createOneShot(11, 42));
                 return;
             }
-        } catch (SecurityException | RuntimeException ignored) {
+        } catch (RuntimeException ignored) {
             // Fall back to the framework's system-configured tap feedback.
         }
         if (view != null) view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
