@@ -1,0 +1,139 @@
+package com.fks.b1precision;
+
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothHidDevice;
+import android.bluetooth.BluetoothHidDeviceAppSdpSettings;
+import android.bluetooth.BluetoothManager;
+import android.bluetooth.BluetoothProfile;
+import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.Log;
+import java.util.Set;
+
+/** Experimental native HID keyboard/mouse transport, isolated from existing BLE remote. */
+@SuppressWarnings("MissingPermission")
+final class HidTransport {
+    interface Listener { void onState(String state, boolean connected); }
+    private static final String TAG = "B1PrecisionHID";
+    private static final int KEYBOARD = 1, MOUSE = 2, CONSUMER = 3;
+    private static final byte[] DESCRIPTOR = new byte[] {
+        // Keyboard report ID 1, 8 bytes
+        0x05,0x01,0x09,0x06,(byte)0xA1,0x01,(byte)0x85,0x01,
+        0x05,0x07,0x19,(byte)0xE0,0x29,(byte)0xE7,0x15,0x00,0x25,0x01,
+        0x75,0x01,(byte)0x95,0x08,(byte)0x81,0x02,
+        (byte)0x95,0x01,0x75,0x08,(byte)0x81,0x01,
+        (byte)0x95,0x06,0x75,0x08,0x15,0x00,0x25,0x65,
+        0x05,0x07,0x19,0x00,0x29,0x65,(byte)0x81,0x00,(byte)0xC0,
+        // Relative mouse report ID 2, buttons + X/Y; zero scroll
+        0x05,0x01,0x09,0x02,(byte)0xA1,0x01,(byte)0x85,0x02,0x09,0x01,(byte)0xA1,0x00,
+        0x05,0x09,0x19,0x01,0x29,0x03,0x15,0x00,0x25,0x01,
+        (byte)0x95,0x03,0x75,0x01,(byte)0x81,0x02,
+        (byte)0x95,0x01,0x75,0x05,(byte)0x81,0x01,
+        0x05,0x01,0x09,0x30,0x09,0x31,0x15,(byte)0x81,0x25,0x7f,
+        0x75,0x08,(byte)0x95,0x02,(byte)0x81,0x06,(byte)0xC0,(byte)0xC0,
+        // Consumer control report ID 3, 16-bit usage; Volume +/-/Mute/AC Home
+        0x05,0x0c,0x09,0x01,(byte)0xA1,0x01,(byte)0x85,0x03,
+        0x15,0x00,0x26,(byte)0xff,0x03,0x19,0x00,
+        0x2a,(byte)0xff,0x03,0x75,0x10,(byte)0x95,0x01,
+        (byte)0x81,0x00,(byte)0xC0
+    };
+    private final Context context;
+    private final Listener listener;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private BluetoothAdapter adapter;
+    private BluetoothHidDevice hid;
+    private BluetoothDevice host;
+    private BluetoothDevice preferred;
+    private boolean registered;
+    private boolean connected;
+
+    HidTransport(Context context, Listener listener) { this.context = context; this.listener = listener; }
+
+    void start() {
+        try {
+            BluetoothManager bm = (BluetoothManager) context.getSystemService(Context.BLUETOOTH_SERVICE);
+            adapter = bm == null ? null : bm.getAdapter();
+            if (adapter == null) { state("NO_BLUETOOTH_ADAPTER"); return; }
+            if (!adapter.isEnabled()) { state("BLUETOOTH_OFF"); return; }
+            state("REQUESTING_HID_DEVICE_PROFILE");
+            if (!adapter.getProfileProxy(context, new BluetoothProfile.ServiceListener() {
+                @Override public void onServiceConnected(int profile, BluetoothProfile proxy) {
+                    if (!(proxy instanceof BluetoothHidDevice)) { state("HID_PROXY_UNAVAILABLE"); return; }
+                    hid = (BluetoothHidDevice) proxy;
+                    register();
+                }
+                @Override public void onServiceDisconnected(int profile) {
+                    connected = false; registered = false; host = null; hid = null; state("HID_PROFILE_DISCONNECTED");
+                }
+            }, BluetoothProfile.HID_DEVICE)) state("HID_DEVICE_UNSUPPORTED_ON_PHONE");
+        } catch (SecurityException e) { state("BLUETOOTH_PERMISSION_DENIED"); }
+        catch (Exception e) { state("HID_PROFILE_ERROR:"+e.getClass().getSimpleName()); }
+    }
+
+    private void register() {
+        if (hid == null) return;
+        try {
+            BluetoothHidDeviceAppSdpSettings sdp = new BluetoothHidDeviceAppSdpSettings(
+                "B1 Precision Remote", "Keyboard and relative mouse HID test", "FKS",
+                BluetoothHidDevice.SUBCLASS1_COMBO, DESCRIPTOR);
+            boolean accepted = hid.registerApp(sdp, null, null, context.getMainExecutor(), new BluetoothHidDevice.Callback() {
+                @Override public void onAppStatusChanged(BluetoothDevice pluggedDevice, boolean isRegistered) {
+                    registered = isRegistered;
+                    state(isRegistered ? "HID_REGISTERED_PAIR_WITH_B1" : "HID_REGISTRATION_FAILED_OR_RELEASED");
+                }
+                @Override public void onConnectionStateChanged(BluetoothDevice device, int newState) {
+                    connected = newState == BluetoothProfile.STATE_CONNECTED;
+                    if (connected) { host = device; preferred = device; state("HID_CONNECTED_TO_" + safeName(device)); }
+                    else { host = null; state("HID_CONNECTION_STATE_" + newState); }
+                }
+            });
+            if (!accepted) state("HID_REGISTER_REQUEST_REJECTED");
+        } catch (Exception e) { state("HID_REGISTER_EXCEPTION:"+e.getClass().getSimpleName()); }
+    }
+
+    Set<BluetoothDevice> bondedDevices() { return adapter == null ? java.util.Collections.emptySet() : adapter.getBondedDevices(); }
+    String safeName(BluetoothDevice device) {
+        try { String name = device.getName(); return name == null ? device.getAddress() : name; }
+        catch(Exception ignored) { return "Bluetooth host"; }
+    }
+    void connect(BluetoothDevice device) {
+        preferred = device;
+        if (!registered || hid == null) { state("HID_NOT_REGISTERED"); return; }
+        try { state(hid.connect(device) ? "HID_CONNECTING_TO_" + safeName(device) : "HID_CONNECT_REQUEST_REJECTED"); }
+        catch(Exception e) { state("HID_CONNECT_EXCEPTION:"+e.getClass().getSimpleName()); }
+    }
+    void reconnect() { if(preferred != null) connect(preferred); else state("PAIR_B1_AND_SELECT_HOST"); }
+    boolean isConnected() { return connected && host != null && hid != null; }
+    boolean isRegistered() { return registered; }
+
+    private boolean send(int reportId, byte[] data) {
+        if (!isConnected()) return false;
+        try { return hid.sendReport(host, reportId, data); }
+        catch (Exception e) { Log.w(TAG,"sendReport",e); state("HID_SEND_FAILED"); return false; }
+    }
+    void key(int usage) {
+        if (!isConnected()) { state("CONNECT_B1_HID_FIRST"); return; }
+        byte[] b = new byte[8]; b[2] = (byte) usage;
+        send(KEYBOARD,b);
+        handler.postDelayed(() -> send(KEYBOARD,new byte[8]),55);
+    }
+    void consumer(int usage) {
+        if (!isConnected()) { state("CONNECT_B1_HID_FIRST"); return; }
+        send(CONSUMER,new byte[]{ (byte)usage,(byte)(usage >> 8)});
+        handler.postDelayed(() -> send(CONSUMER,new byte[]{0,0}),55);
+    }
+    void mouse(int dx,int dy,boolean click) {
+        send(MOUSE,new byte[]{(byte)(click ? 1 : 0), (byte)Math.max(-127,Math.min(127,dx)),
+                (byte)Math.max(-127,Math.min(127,dy))});
+    }
+    void mouseClick() { mouse(0,0,true); handler.postDelayed(()->mouse(0,0,false),55); }
+    void release() {
+        try { if (hid != null && registered) hid.unregisterApp(); }
+        catch (Exception ignored) {}
+        if(adapter != null && hid != null) adapter.closeProfileProxy(BluetoothProfile.HID_DEVICE,hid);
+        hid = null; host = null; connected = false; registered = false;
+    }
+    private void state(String s) { handler.post(() -> listener.onState(s, isConnected())); }
+}
