@@ -52,6 +52,54 @@ final class HidTransport {
     private boolean proxyPending;
     private boolean registrationPending;
     private int foregroundRetries;
+    private int reconnectAttempts;
+    private static final int MAX_RECONNECT_ATTEMPTS = 3;
+    private static final String PREF_NAME = "b1_precision_hid";
+    private static final String PREF_B1_ADDR = "verified_b1_host_address";
+    private final Runnable reconnectTask = () -> {
+        if (!foreground || !registered || isConnected()) return;
+        if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+            state("HID_RECONNECT_PAUSED_TAP_ORANGE");
+            return;
+        }
+        BluetoothDevice target = rememberedB1();
+        if (target == null) {
+            state("HID_REGISTERED_PAIR_WITH_B1");
+            return;
+        }
+        reconnectAttempts++;
+        try {
+            if (!hid.connect(target)) state("HID_RECONNECT_REQUEST_REJECTED");
+            else state("HID_RECONNECTING_B1_" + reconnectAttempts);
+        } catch (RuntimeException e) {
+            state("HID_RECONNECT_ERROR_" + e.getClass().getSimpleName());
+        }
+        if (!isConnected() && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+            handler.postDelayed(reconnectTask, 1900);
+        }
+    };
+
+    private BluetoothDevice rememberedB1() {
+        if (adapter == null) return null;
+        if (preferred != null && "B1".equalsIgnoreCase(safeName(preferred))
+                && preferred.getBondState() == BluetoothDevice.BOND_BONDED) return preferred;
+        String address = context.getSharedPreferences(PREF_NAME,Context.MODE_PRIVATE)
+                .getString(PREF_B1_ADDR, null);
+        if (address == null) return null;
+        try {
+            BluetoothDevice device = adapter.getRemoteDevice(address);
+            if (!"B1".equalsIgnoreCase(safeName(device))
+                    || device.getBondState() != BluetoothDevice.BOND_BONDED) return null;
+            preferred = device;
+            return device;
+        } catch (RuntimeException ignored) { return null; }
+    }
+    private void queueReconnect(long delayMs) {
+        handler.removeCallbacks(reconnectTask);
+        if (foreground && registered && !isConnected() && rememberedB1() != null) {
+            handler.postDelayed(reconnectTask, delayMs);
+        }
+    }
 
     HidTransport(Context context, Listener listener) { this.context = context; this.listener = listener; }
 
@@ -98,7 +146,9 @@ final class HidTransport {
                     registered = isRegistered;
                     if (isRegistered) {
                         foregroundRetries = 0;
+                        reconnectAttempts = 0;
                         state("HID_REGISTERED_PAIR_WITH_B1");
+                        queueReconnect(300);
                     } else {
                         connected = false;
                         host = null;
@@ -115,8 +165,22 @@ final class HidTransport {
                 }
                 @Override public void onConnectionStateChanged(BluetoothDevice device, int newState) {
                     connected = newState == BluetoothProfile.STATE_CONNECTED;
-                    if (connected) { host = device; preferred = device; state("HID_CONNECTED_TO_" + safeName(device)); }
-                    else { host = null; state("HID_CONNECTION_STATE_" + newState); }
+                    if (connected) {
+                        host = device;
+                        handler.removeCallbacks(reconnectTask);
+                        reconnectAttempts = 0;
+                        // Persist only a confirmed B1 bond, never headphones.
+                        if ("B1".equalsIgnoreCase(safeName(device))) {
+                            preferred = device;
+                            context.getSharedPreferences(PREF_NAME,Context.MODE_PRIVATE)
+                                    .edit().putString(PREF_B1_ADDR,device.getAddress()).apply();
+                        }
+                        state("HID_CONNECTED_TO_" + safeName(device));
+                    } else {
+                        host = null;
+                        state("HID_CONNECTION_STATE_" + newState);
+                        if (newState == BluetoothProfile.STATE_DISCONNECTED) queueReconnect(700);
+                    }
                 }
             });
             if (!accepted) {
@@ -134,10 +198,15 @@ final class HidTransport {
         foreground = true;
         foregroundRetries = 0;
         if (!registered && !registrationPending) start();
+        else if (registered && !isConnected()) queueReconnect(350);
     }
-    void onBackground() { foreground = false; }
+    void onBackground() {
+        foreground = false;
+        handler.removeCallbacks(reconnectTask);
+    }
     void retryRegistration() {
-        if (registered) { reconnect(); return; }
+        reconnectAttempts = 0;
+        if (registered) { queueReconnect(0); return; }
         foregroundRetries = 0;
         start();
     }
@@ -148,12 +217,18 @@ final class HidTransport {
         catch(Exception ignored) { return "Bluetooth host"; }
     }
     void connect(BluetoothDevice device) {
-        preferred = device;
+        if ("B1".equalsIgnoreCase(safeName(device))) preferred = device;
         if (!registered || hid == null) { state("HID_NOT_REGISTERED"); return; }
+        handler.removeCallbacks(reconnectTask);
+        reconnectAttempts = 0;
         try { state(hid.connect(device) ? "HID_CONNECTING_TO_" + safeName(device) : "HID_CONNECT_REQUEST_REJECTED"); }
         catch(Exception e) { state("HID_CONNECT_EXCEPTION:"+e.getClass().getSimpleName()); }
     }
-    void reconnect() { if(preferred != null) connect(preferred); else state("PAIR_B1_AND_SELECT_HOST"); }
+    void reconnect() {
+        BluetoothDevice target = rememberedB1();
+        if (target != null) connect(target);
+        else state("PAIR_B1_AND_SELECT_HOST");
+    }
     boolean isConnected() { return connected && host != null && hid != null; }
     boolean isRegistered() { return registered; }
 
@@ -179,6 +254,8 @@ final class HidTransport {
     }
     void mouseClick() { mouse(0,0,true); handler.postDelayed(()->mouse(0,0,false),55); }
     void release() {
+        foreground = false;
+        handler.removeCallbacks(reconnectTask);
         try { if (hid != null && registered) hid.unregisterApp(); }
         catch (Exception ignored) {}
         if(adapter != null && hid != null) adapter.closeProfileProxy(BluetoothProfile.HID_DEVICE,hid);
