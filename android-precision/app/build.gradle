@@ -7,8 +7,8 @@ android {
         applicationId 'com.fks.b1remote.precision.probe'
         minSdk 28
         targetSdk 34
-        versionCode 1200
-        versionName '1.2.0-probe.1'
+        versionCode 1201
+        versionName '1.2.1-uat.1'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
