@@ -53,6 +53,11 @@ final class HidTransport {
     private boolean registrationPending;
     private int foregroundRetries;
     private int reconnectAttempts;
+    private boolean mouseButtonHeld;
+    private final Runnable mouseRelease = () -> {
+        mouseButtonHeld = false;
+        send(MOUSE, new byte[]{0,0,0});
+    };
     private static final int MAX_RECONNECT_ATTEMPTS = 3;
     private static final String PREF_NAME = "b1_precision_hid";
     private static final String PREF_B1_ADDR = "verified_b1_host_address";
@@ -243,19 +248,30 @@ final class HidTransport {
         send(KEYBOARD,b);
         handler.postDelayed(() -> send(KEYBOARD,new byte[8]),55);
     }
+    /** HID Consumer AC Back maps to Android KEYCODE_BACK on standard key layouts. */
+    void back() { consumer(0x224); }
     void consumer(int usage) {
         if (!isConnected()) { state("CONNECT_B1_HID_FIRST"); return; }
         send(CONSUMER,new byte[]{ (byte)usage,(byte)(usage >> 8)});
         handler.postDelayed(() -> send(CONSUMER,new byte[]{0,0}),55);
     }
     void mouse(int dx,int dy,boolean click) {
-        send(MOUSE,new byte[]{(byte)(click ? 1 : 0), (byte)Math.max(-127,Math.min(127,dx)),
+        send(MOUSE,new byte[]{(byte)((click || mouseButtonHeld) ? 1 : 0),
+                (byte)Math.max(-127,Math.min(127,dx)),
                 (byte)Math.max(-127,Math.min(127,dy))});
     }
-    void mouseClick() { mouse(0,0,true); handler.postDelayed(()->mouse(0,0,false),55); }
+    void mouseClick() {
+        // Keep the button down during gyro movement frames until release.
+        handler.removeCallbacks(mouseRelease);
+        mouseButtonHeld = true;
+        mouse(0,0,true);
+        handler.postDelayed(mouseRelease,85);
+    }
     void release() {
         foreground = false;
         handler.removeCallbacks(reconnectTask);
+        handler.removeCallbacks(mouseRelease);
+        mouseButtonHeld = false;
         try { if (hid != null && registered) hid.unregisterApp(); }
         catch (Exception ignored) {}
         if(adapter != null && hid != null) adapter.closeProfileProxy(BluetoothProfile.HID_DEVICE,hid);
