@@ -5,6 +5,8 @@ on:
       - feature/android-v1.2-precision-hid
     paths:
       - 'android-precision/**'
+      - 'tools/b1_*probe.py'
+      - 'tools/b1_retarget_verify.py'
       - '.github/workflows/build-android-v1.2-hid-probe.yml'
   workflow_dispatch:
 
@@ -15,6 +17,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+      - name: Validate read-only and guarded NAS tools
+        run: python3 -m py_compile tools/b1_hid_host_probe.py tools/b1_retarget_verify.py
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
