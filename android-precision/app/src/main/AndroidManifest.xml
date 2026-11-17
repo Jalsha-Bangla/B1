@@ -6,6 +6,10 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application android:allowBackup="false" android:label="B1 Precision HID Probe"
                  android:theme="@android:style/Theme.Material.NoActionBar"
                  android:usesCleartextTraffic="false">
@@ -15,5 +19,15 @@
           <category android:name="android.intent.category.LAUNCHER"/>
         </intent-filter>
       </activity>
+      <service android:name=".HidConnectionService"
+               android:exported="false"
+               android:stopWithTask="false"
+               android:foregroundServiceType="connectedDevice"/>
+      <receiver android:name=".HidBootReceiver" android:enabled="true" android:exported="false">
+        <intent-filter>
+          <action android:name="android.intent.action.BOOT_COMPLETED"/>
+          <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+        </intent-filter>
+      </receiver>
     </application>
 </manifest>
