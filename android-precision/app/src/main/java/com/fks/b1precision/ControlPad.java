@@ -2,6 +2,9 @@ package com.fks.b1precision;
 
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Bitmap;
+import android.graphics.Path;
+import android.graphics.Rect;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.os.Handler;
@@ -16,6 +19,7 @@ final class ControlPad extends View {
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Listener listener;
+    private Bitmap swipeBackground;
     private final Haptics haptics;
     private int mode = DPAD, pressed = 0, repeatingUsage = 0;
     private float downX,downY, ballX,ballY,drawBallX,drawBallY;
@@ -35,6 +39,10 @@ final class ControlPad extends View {
         setHapticFeedbackEnabled(true);
     }
     int getMode(){return mode;}
+    void setSwipeBackground(Bitmap bitmap) {
+        swipeBackground=bitmap;
+        invalidate();
+    }
     void setMode(int m){mode=m;stopRepeat();dragging=false;invalidate();}
     void stopRepeat(){repeatingUsage=0;handler.removeCallbacks(repeating);}
     void hitDirection(int usage){haptics.tick(this);listener.onDirection(usage);}
@@ -55,7 +63,37 @@ final class ControlPad extends View {
             c.drawText("▶",cx+radius*.70f,cy+paint.getTextSize()*.3f,paint);
         } else {
             float pad=dp(10);
-            paint.setColor(0xff191b1f);c.drawRoundRect(new RectF(pad,pad,w-pad,h-pad),dp(38),dp(38),paint);
+            RectF panel = new RectF(pad,pad,w-pad,h-pad);
+            float radius=dp(38);
+            paint.setColor(0xff191b1f);
+            c.drawRoundRect(panel,radius,radius,paint);
+            if(mode==SWIPE && swipeBackground!=null && !swipeBackground.isRecycled()) {
+                // The selected family photo stays in private app files and is never
+                // packaged in the public repository. Crop to fill the SWIPE panel.
+                int bw=swipeBackground.getWidth(), bh=swipeBackground.getHeight();
+                float targetRatio=panel.width()/Math.max(1f,panel.height());
+                float sourceRatio=(float)bw/Math.max(1,bh);
+                Rect src;
+                if(sourceRatio>targetRatio) {
+                    int cropWidth=Math.max(1,Math.round(bh*targetRatio));
+                    int left=(bw-cropWidth)/2;
+                    src=new Rect(left,0,left+cropWidth,bh);
+                } else {
+                    int cropHeight=Math.max(1,Math.round(bw/targetRatio));
+                    int top=(bh-cropHeight)/2;
+                    src=new Rect(0,top,bw,top+cropHeight);
+                }
+                Path rounded=new Path();
+                rounded.addRoundRect(panel,radius,radius,Path.Direction.CW);
+                c.save();
+                c.clipPath(rounded);
+                paint.setColor(0xffffffff);
+                paint.setAlpha(92); // light 36% opacity on the charcoal background
+                paint.setFilterBitmap(true);
+                c.drawBitmap(swipeBackground,src,panel,paint);
+                paint.setAlpha(255);
+                c.restore();
+            }
             if(mode==SWIPE){
                 paint.setColor(0xffefeff4);
                 drawBallX+=(ballX-drawBallX)*.24f;
