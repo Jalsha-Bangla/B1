@@ -107,7 +107,7 @@ public final class HidConnectionService extends Service {
         NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         if (nm == null) return;
         NotificationChannel channel = new NotificationChannel(CHANNEL_ID,
-                "B1 Bluetooth Remote", NotificationManager.IMPORTANCE_LOW);
+                "AA TV Bluetooth Remote", NotificationManager.IMPORTANCE_LOW);
         channel.setDescription("Keeps your paired B1 HID remote connected while locked");
         nm.createNotificationChannel(channel);
     }
@@ -122,7 +122,7 @@ public final class HidConnectionService extends Service {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         Notification.Builder b = new Notification.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
-                .setContentTitle("B1 Remote")
+                .setContentTitle("AA TV Remote")
                 .setContentText(connected ? "Connected — works while locked" : "Ready — reconnecting when B1 is available")
                 .setContentIntent(tap)
                 .setOngoing(true)

@@ -10,8 +10,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-    <application android:allowBackup="false" android:label="B1 Precision HID Probe"
+    <application android:allowBackup="false" android:label="AA TV"
                  android:theme="@android:style/Theme.Material.NoActionBar"
+                 android:icon="@drawable/aa_tv_icon"
                  android:usesCleartextTraffic="false">
       <activity android:name=".MainActivity" android:screenOrientation="unspecified" android:exported="true">
         <intent-filter>
