@@ -70,7 +70,13 @@ public final class MainActivity extends Activity implements SensorEventListener 
             btButton.setTextColor(connected ? GREEN : ORANGE);
             btButton.setText("●");
         }
-        if (stateText != null) stateText.setText(message);
+        if (stateText != null) {
+            if (connected) stateText.setText("Connected · AA TV");
+            else if (message != null && message.startsWith("HID_REGISTERED"))
+                stateText.setText("Ready to connect · AA TV");
+            else if ("DISCONNECTED_BY_USER".equals(message)) stateText.setText("Disconnected");
+            else stateText.setText(message);
+        }
     }
     private void startAndBindHidService() {
         Intent serviceIntent = new Intent(this, HidConnectionService.class);
