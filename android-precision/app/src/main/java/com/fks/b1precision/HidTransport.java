@@ -253,6 +253,9 @@ final class HidTransport {
     }
     /** HID Consumer AC Back maps to Android KEYCODE_BACK on standard key layouts. */
     void back() { consumer(0x224); }
+    /** HID Consumer Sleep Mode usage 0x34 normally maps to Android KEYCODE_POWER.
+     *  Host-specific behavior must be verified on B1 hardware. */
+    void power() { consumer(0x34); }
     void consumer(int usage) {
         if (!isConnected()) { state("CONNECT_B1_HID_FIRST"); return; }
         send(CONSUMER,new byte[]{ (byte)usage,(byte)(usage >> 8)});
