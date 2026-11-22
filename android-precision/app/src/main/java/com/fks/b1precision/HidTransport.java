@@ -146,7 +146,7 @@ final class HidTransport {
         registrationPending = true;
         try {
             BluetoothHidDeviceAppSdpSettings sdp = new BluetoothHidDeviceAppSdpSettings(
-                "B1 Precision Remote", "Keyboard and relative mouse HID test", "FKS",
+                "AA TV Remote", "Keyboard and relative mouse HID test", "FKS",
                 BluetoothHidDevice.SUBCLASS1_COMBO, DESCRIPTOR);
             boolean accepted = hid.registerApp(sdp, null, null, context.getMainExecutor(), new BluetoothHidDevice.Callback() {
                 @Override public void onAppStatusChanged(BluetoothDevice pluggedDevice, boolean isRegistered) {
